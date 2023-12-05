@@ -1,7 +1,10 @@
+import keras.metrics
 import numpy as np
 import tensorflow as tf
 import re
 import matplotlib.pyplot as plt
+import datetime
+import os
 
 def cleanText(data_text:list, regEx_acceptable_characters:str = None):
     """Cleans and prepare data text for the network.
@@ -103,7 +106,6 @@ def createModel(inputShape3D:tuple) -> tf.keras.Model:
     model.add(tf.keras.layers.Dense(1, activation="sigmoid"))
     model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
     return model
-
 class ManageHugeDatasetsWithGenerator(tf.keras.utils.Sequence):
     def __init__(self, filePath:str, strOfAcceptableCharacters:str, numberOfCharactersInText:int, batchSize:int = 32,
                  shuffle = True):
@@ -148,7 +150,6 @@ class ManageHugeDatasetsWithGenerator(tf.keras.utils.Sequence):
     def __len__(self):
         "Denotes number of batches per epoch"
         return int(np.floor(len(self.dataTextRaw)/self.batchSize))
-
     def on_epoch_end(self):
         "Update indexes after each epoch"
         self.indexes = np.arange(len(self.dataTextRaw))
@@ -210,13 +211,15 @@ with open("./data/uniqueList.txt", "r") as fd:
 # train_categorical_labels = tf.keras.utils.to_categorical(train_labels, 1)
 
 NUMBER_CHARACTERS_IN_TEXT = 1024
+TENSORBOARD_LOGDIR = "./logs/fit/" + "tens_log_" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 batchSize = 360
-try:
-    model = tf.keras.models.load_model("./model")
-except:
+modelFilePath = os.path.join(os.path.curdir, "checkpoint")
+
+train_model = True
+if train_model:
     # Created model not trained yet
     model = createModel((None, len(list_acceptable_characters), NUMBER_CHARACTERS_IN_TEXT))
-    #Training model
+    # Training model
     filePath = "./data/train.ft.txt"
     # with open("./data/train.ft.txt", "r", encoding="utf-8") as text:
     #     file_text_raw = text.readlines()
@@ -224,19 +227,21 @@ except:
     # train_data_raw = createTensorForNetworkFromText(train_data_raw, list_acceptable_characters, NUMBER_CHARACTERS_IN_TEXT)
     # train_data_raw = tf.data.Dataset.from_tensor_slices((train_data_raw, np.array(train_labels, dtype="int8")))
 
-    modelFilePath = "./checkpointModel"
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=TENSORBOARD_LOGDIR, histogram_freq=1)
     saveModelCallback = tf.keras.callbacks.ModelCheckpoint(
         filepath=modelFilePath,
-        monitor="val_loss",
+        monitor="loss",
         verbose=1,
         save_best_only=True,
         mode="min",
         save_freq="epoch"
     )
 
-    train_data_generator = ManageHugeDatasetsWithGenerator(filePath=filePath, strOfAcceptableCharacters=list_acceptable_characters,
-                                              numberOfCharactersInText=NUMBER_CHARACTERS_IN_TEXT, batchSize=batchSize)
-    model.fit(train_data_generator, epochs=20, verbose=1, callbacks=[saveModelCallback])
+    train_data_generator = ManageHugeDatasetsWithGenerator(filePath=filePath,
+                                                           strOfAcceptableCharacters=list_acceptable_characters,
+                                                           numberOfCharactersInText=NUMBER_CHARACTERS_IN_TEXT,
+                                                           batchSize=batchSize)
+    history = model.fit(train_data_generator, epochs=20, verbose=1, callbacks=[tensorboard_callback, saveModelCallback])
     # for i in range(numberOfTrainingIterations):
     #     training_data_cut = createTensorForNetworkFromText(train_data_raw[int((i * len(train_data_raw)) / numberOfTrainingIterations):
     #                                                                       int(((i + 1) * len(train_data_raw)) / numberOfTrainingIterations - 1)],
@@ -249,6 +254,12 @@ except:
     #     labels_cut = np.array(labels_cut, dtype="int8")
     #     model.fit(training_data_cut, labels_cut, batch_size=32, epochs=20, verbose=1)
     # tf.keras.models.save_model(model, "./model")
+else:
+    try:
+        model = tf.keras.models.load_model(modelFilePath)
+        print("Successfully loaded model")
+    except:
+        raise "Model not found"
 
 #Evaluating model
 with open("./data/test.ft.txt", "r", encoding="utf-8") as test_text:
@@ -262,8 +273,5 @@ test_data_generator = ManageHugeDatasetsWithGenerator("./data/test.ft.txt", list
 metrics = model.evaluate(test_data_generator, verbose=1)
 print()
 print("%s : %.2f%%" % (model.metrics_names[1], metrics[1] * 100))
-
-
-
-
+print("Metrics: %s" % metrics)
 

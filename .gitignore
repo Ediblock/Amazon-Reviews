@@ -2,3 +2,6 @@
 /data/train.ft.txt
 .idea/
 /model/
+/checkpoint/
+/logs/
+/img/
